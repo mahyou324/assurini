@@ -78,37 +78,50 @@ export function TripDetailsForm({ onPlanRecommended, onError }: TripDetailsFormP
     setIsLoading(true);
     onError(""); // Clear previous errors
 
-    const inputForAI: RecommendInsurancePlanInput = {
-      ...values,
-      startDate: format(values.startDate, "yyyy-MM-dd"),
-      endDate: format(values.endDate, "yyyy-MM-dd"),
-      preExistingConditions: values.preExistingConditions || "Aucune", 
-    };
-    
-    const result = await getInsuranceRecommendationAction(inputForAI);
+    try {
+      // Validate dates exist before formatting
+      if (!values.startDate || !values.endDate) {
+        onError("Veuillez sélectionner les dates de début et de fin de votre voyage.");
+        setIsLoading(false);
+        return;
+      }
 
-    if (result && "planName" in result) {
-      const planWithTripDetails: SelectedPlanWithTripDetails = {
-        plan: result,
-        userInput: { // Capture all form values for localStorage
-          destination: values.destination,
-          startDate: format(values.startDate, "yyyy-MM-dd"),
-          endDate: format(values.endDate, "yyyy-MM-dd"),
-          travelerCount: values.travelerCount,
-          travelerAge: values.travelerAge,
-          preExistingConditions: values.preExistingConditions || "Aucune",
-          tripPurpose: values.tripPurpose,
-          budget: values.budget,
-        }
+      const inputForAI: RecommendInsurancePlanInput = {
+        ...values,
+        startDate: format(values.startDate, "yyyy-MM-dd"),
+        endDate: format(values.endDate, "yyyy-MM-dd"),
+        preExistingConditions: values.preExistingConditions || "Aucune",
       };
-      onPlanRecommended(planWithTripDetails);
-    } else if (result && "error" in result) {
-      console.error("AI Error:", result.error, result.details);
-      onError(result.error || "Une erreur inconnue est survenue lors de la recommandation.");
-    } else {
-      onError("Réponse inattendue du service de recommandation.");
+
+      const result = await getInsuranceRecommendationAction(inputForAI);
+
+      if (result && "planName" in result) {
+        const planWithTripDetails: SelectedPlanWithTripDetails = {
+          plan: result,
+          userInput: { // Capture all form values for localStorage
+            destination: values.destination,
+            startDate: format(values.startDate, "yyyy-MM-dd"),
+            endDate: format(values.endDate, "yyyy-MM-dd"),
+            travelerCount: values.travelerCount,
+            travelerAge: values.travelerAge,
+            preExistingConditions: values.preExistingConditions || "Aucune",
+            tripPurpose: values.tripPurpose,
+            budget: values.budget,
+          }
+        };
+        onPlanRecommended(planWithTripDetails);
+      } else if (result && "error" in result) {
+        console.error("AI Error:", result.error, result.details);
+        onError(result.error || "Une erreur inconnue est survenue lors de la recommandation.");
+      } else {
+        onError("Réponse inattendue du service de recommandation.");
+      }
+    } catch (error) {
+      console.error("Error in onSubmit:", error);
+      onError("Une erreur est survenue lors du traitement de votre demande. Veuillez réessayer.");
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   return (

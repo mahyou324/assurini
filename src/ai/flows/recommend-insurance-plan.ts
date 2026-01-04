@@ -40,6 +40,48 @@ const RecommendInsurancePlanOutputSchema = z.object({
 
 export type RecommendInsurancePlanOutput = z.infer<typeof RecommendInsurancePlanOutputSchema>;
 
+function buildPromptText(input: RecommendInsurancePlanInput): string {
+  return `You are an AI travel insurance expert for Algerian residents. Based on the user's trip details and risk factors, recommend the most suitable travel insurance plan.
+
+Trip Details:
+- Destination: ${input.destination}
+- Start Date: ${input.startDate}
+- End Date: ${input.endDate}
+- Number of Travelers: ${input.travelerCount}
+- Traveler Age: ${input.travelerAge}
+- Pre-existing Conditions: ${input.preExistingConditions}
+- Trip Purpose: ${input.tripPurpose}
+- Budget: ${input.budget} DZD
+
+Your recommended plan should offer comprehensive coverage. For the 'coverageDetails' field, provide a multi-line string detailing key guarantees, similar to what a traditional insurer like Carama might offer. Examples of guarantees to consider including:
+- Frais médicaux et hospitalisation à l'étranger (avec un plafond, ex: jusqu'à 30,000 EUR ou 50,000 EUR)
+- Rapatriement médical ou en cas de décès (couverture des frais réels)
+- Soins dentaires d'urgence (avec un plafond, ex: jusqu'à 300 EUR)
+- Prolongation de séjour si médicalement nécessaire (avec plafond journalier et durée max)
+- Transport ou visite d'un proche en cas d'hospitalisation
+- Perte, vol ou détérioration de bagages (avec un plafond)
+- Assistance juridique à l'étranger (avec un plafond)
+- Frais de recherche et de sauvetage
+- Responsabilité civile à l'étranger
+
+Provide a suitabilityScore (0-100) indicating how well the plan matches the user's needs.
+Explain the rationale for your recommendation.
+
+If you don't have a specific provider name, generate a plausible one (e.g., "Algerian Travel Secure", "SaharaAssur Voyages", "Atlas Voyage Protect").
+For the policyDocumentLink, use the exact string "MOCK_POLICY_LINK_PLACEHOLDER".
+
+IMPORTANT: Respond ONLY with a valid JSON object matching this exact structure:
+{
+  "planName": "string",
+  "provider": "string",
+  "coverageDetails": "string with newlines for each guarantee",
+  "price": number (will be overridden by calculated price),
+  "policyDocumentLink": "MOCK_POLICY_LINK_PLACEHOLDER",
+  "suitabilityScore": number (0-100),
+  "rationale": "string"
+}`;
+}
+
 function calculateInsurancePrice({ startDate, endDate, travelerAge, destination }: { startDate: string, endDate: string, travelerAge: number, destination: string }) {
   // Calcul du nombre de jours
   const start = new Date(startDate);
@@ -80,8 +122,83 @@ export async function recommendInsurancePlan(
     travelerAge: input.travelerAge,
     destination: input.destination,
   });
-  // Appel du flow IA
-  const aiResult = await recommendInsurancePlanFlow(input);
+
+  // Use OpenRouter API directly instead of Genkit
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    throw new Error("OPENROUTER_API_KEY is not configured");
+  }
+
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'http://localhost:9002',
+      'X-Title': 'Assurini Travel Insurance',
+    },
+    body: JSON.stringify({
+      model: 'mistralai/mistral-7b-instruct:free',
+      messages: [
+        {
+          role: 'user',
+          content: buildPromptText(input) + '\n\nIMPORTANT: Respond ONLY with the JSON object, no markdown formatting, no explanations.',
+        }
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('OpenRouter API error:', response.status, response.statusText);
+    console.error('Error details:', errorText);
+
+    // Handle specific error cases
+    if (response.status === 429) {
+      throw new Error("Limite de requêtes atteinte. Veuillez attendre quelques secondes et réessayer.");
+    } else if (response.status === 401) {
+      throw new Error("Erreur d'authentification API. Veuillez vérifier la configuration.");
+    } else if (response.status === 402) {
+      throw new Error("Crédit API insuffisant. Veuillez vérifier votre compte OpenRouter.");
+    }
+
+    throw new Error(`Erreur API (${response.status}): ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  let content = data.choices?.[0]?.message?.content;
+
+  if (!content) {
+    throw new Error("L'IA n'a pas pu générer une recommandation. Veuillez réessayer.");
+  }
+
+  let aiResult: RecommendInsurancePlanOutput;
+  try {
+    // Remove markdown code blocks (```json or ``` or ```)
+    content = content.replace(/```json\s*/g, '').replace(/```\s*/g, '');
+
+    // Remove any text before the first { and after the last }
+    const firstBrace = content.indexOf('{');
+    const lastBrace = content.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1) {
+      content = content.substring(firstBrace, lastBrace + 1);
+    }
+
+    // Clean up escaped newlines and extra whitespace
+    content = content.trim();
+
+    aiResult = JSON.parse(content);
+
+    // Validate required fields
+    if (!aiResult.planName || !aiResult.provider || !aiResult.coverageDetails) {
+      throw new Error('Missing required fields in AI response');
+    }
+  } catch (e) {
+    console.error('Failed to parse AI response:', content);
+    console.error('Parse error:', e);
+    throw new Error("L'IA n'a pas pu générer une recommandation structurée valide.");
+  }
+
   // On remplace le prix IA par le prix calculé côté code
   return { ...aiResult, price: autoPrice };
 }

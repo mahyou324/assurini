@@ -25,7 +25,69 @@ const ChatbotOutputSchema = z.object({
 export type ChatbotOutput = z.infer<typeof ChatbotOutputSchema>;
 
 export async function chatWithBot(input: ChatbotInput): Promise<ChatbotOutput> {
-  return chatbotFlow(input);
+  // Use OpenRouter API directly instead of Genkit
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    return { botResponse: "Le service de chat est temporairement indisponible. Veuillez réessayer plus tard." };
+  }
+
+  try {
+    const messages: any[] = [];
+
+    // Add system message
+    messages.push({
+      role: 'system',
+      content: systemPrompt,
+    });
+
+    // Add chat history if available
+    if (input.chatHistory && input.chatHistory.length > 0) {
+      input.chatHistory.forEach(msg => {
+        messages.push({
+          role: msg.role === 'user' ? 'user' : 'assistant',
+          content: msg.text,
+        });
+      });
+    }
+
+    // Add current user message
+    messages.push({
+      role: 'user',
+      content: input.userMessage,
+    });
+
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'http://localhost:9002',
+        'X-Title': 'Assurini Travel Insurance',
+      },
+      body: JSON.stringify({
+        model: 'mistralai/mistral-7b-instruct:free',
+        messages: messages,
+        temperature: 0.7,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('OpenRouter API error for chatbot:', response.status, response.statusText);
+      return { botResponse: "Je suis désolé, je rencontre des difficultés techniques. Veuillez réessayer dans quelques instants." };
+    }
+
+    const data = await response.json();
+    const botResponse = data.choices?.[0]?.message?.content;
+
+    if (!botResponse) {
+      return { botResponse: "Je suis désolé, je n'ai pas pu générer de réponse. Veuillez réessayer." };
+    }
+
+    return { botResponse: botResponse.trim() };
+  } catch (error) {
+    console.error('Error in chatWithBot:', error);
+    return { botResponse: "Je suis désolé, une erreur s'est produite. Veuillez réessayer plus tard." };
+  }
 }
 
 const systemPrompt = `Vous êtes un assistant virtuel expert et amical pour ASSURINI, une compagnie d'assurance voyage destinée aux résidents algériens.
