@@ -65,7 +65,7 @@ export async function chatWithBot(input: ChatbotInput): Promise<ChatbotOutput> {
         'X-Title': 'Assurini Travel Insurance',
       },
       body: JSON.stringify({
-        model: 'mistralai/mistral-7b-instruct:free',
+        model: 'google/gemini-2.0-flash-exp:free',
         messages: messages,
         temperature: 0.7,
       }),

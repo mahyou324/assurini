@@ -138,7 +138,7 @@ export async function recommendInsurancePlan(
       'X-Title': 'Assurini Travel Insurance',
     },
     body: JSON.stringify({
-      model: 'mistralai/mistral-7b-instruct:free',
+      model: 'google/gemini-2.0-flash-exp:free',
       messages: [
         {
           role: 'user',
