@@ -12,7 +12,7 @@ Name:
 OPENROUTER_API_KEY
 
 Value:
-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
+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
 
 Environments:
 ✅ Production
