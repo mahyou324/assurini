@@ -25,8 +25,8 @@ const ChatbotOutputSchema = z.object({
 export type ChatbotOutput = z.infer<typeof ChatbotOutputSchema>;
 
 export async function chatWithBot(input: ChatbotInput): Promise<ChatbotOutput> {
-  // Use OpenRouter API directly instead of Genkit
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  // Use Groq API directly
+  const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
     return { botResponse: "Le service de chat est temporairement indisponible. Veuillez réessayer plus tard." };
   }
@@ -56,23 +56,24 @@ export async function chatWithBot(input: ChatbotInput): Promise<ChatbotOutput> {
       content: input.userMessage,
     });
 
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:9002',
-        'X-Title': 'Assurini Travel Insurance',
       },
       body: JSON.stringify({
-        model: 'mistralai/mistral-7b-instruct:free',
+        model: 'llama-3.3-70b-versatile',
         messages: messages,
         temperature: 0.7,
+        max_tokens: 1000,
       }),
     });
 
     if (!response.ok) {
-      console.error('OpenRouter API error for chatbot:', response.status, response.statusText);
+      const errorText = await response.text();
+      console.error('Groq API error for chatbot:', response.status, response.statusText);
+      console.error('Error details:', errorText);
       return { botResponse: "Je suis désolé, je rencontre des difficultés techniques. Veuillez réessayer dans quelques instants." };
     }
 
@@ -80,6 +81,7 @@ export async function chatWithBot(input: ChatbotInput): Promise<ChatbotOutput> {
     const botResponse = data.choices?.[0]?.message?.content;
 
     if (!botResponse) {
+      console.error('No response from Groq:', JSON.stringify(data));
       return { botResponse: "Je suis désolé, je n'ai pas pu générer de réponse. Veuillez réessayer." };
     }
 

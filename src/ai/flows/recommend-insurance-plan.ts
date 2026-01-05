@@ -123,34 +123,34 @@ export async function recommendInsurancePlan(
     destination: input.destination,
   });
 
-  // Use OpenRouter API directly instead of Genkit
-  const apiKey = process.env.OPENROUTER_API_KEY;
+  // Use Groq API directly
+  const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
-    throw new Error("OPENROUTER_API_KEY is not configured");
+    throw new Error("GROQ_API_KEY is not configured");
   }
 
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
-      'HTTP-Referer': 'http://localhost:9002',
-      'X-Title': 'Assurini Travel Insurance',
     },
     body: JSON.stringify({
-      model: 'mistralai/mistral-7b-instruct:free',
+      model: 'llama-3.3-70b-versatile',
       messages: [
         {
           role: 'user',
           content: buildPromptText(input) + '\n\nIMPORTANT: Respond ONLY with the JSON object, no markdown formatting, no explanations.',
         }
       ],
+      temperature: 0.3,
+      max_tokens: 2000,
     }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('OpenRouter API error:', response.status, response.statusText);
+    console.error('Groq API error:', response.status, response.statusText);
     console.error('Error details:', errorText);
 
     // Handle specific error cases
@@ -158,8 +158,6 @@ export async function recommendInsurancePlan(
       throw new Error("Limite de requêtes atteinte. Veuillez attendre quelques secondes et réessayer.");
     } else if (response.status === 401) {
       throw new Error("Erreur d'authentification API. Veuillez vérifier la configuration.");
-    } else if (response.status === 402) {
-      throw new Error("Crédit API insuffisant. Veuillez vérifier votre compte OpenRouter.");
     }
 
     throw new Error(`Erreur API (${response.status}): ${response.statusText}`);
